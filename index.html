@@ -123,8 +123,8 @@
       </p>
     </section>
 
-    <section id="memory">
-      <h2>5. Memory System & Memory Consistency Model</h2>
+       <section id="memory">
+      <h2>5. Memory System &amp; Memory Consistency Model</h2>
 
       <h3>Cache organization</h3>
       <table>
@@ -135,18 +135,65 @@
           <tr><td>Capacity</td><td>8 KB</td><td>8 KB</td></tr>
           <tr><td>Associativity</td><td>2-way</td><td>2-way</td></tr>
           <tr><td>Line size</td><td>32 bytes</td><td>32 bytes</td></tr>
+          <tr><td>Write policy</td><td>Filled by instruction fetch only</td><td>Write-back</td></tr>
+          <tr><td>Coherence states</td><td>Shared / Invalid<sup><a href="#ref2">[2]</a></sup></td><td>MESI<sup><a href="#ref1">[1]</a></sup></td></tr>
+          <tr><td>Data array</td><td>—</td><td>Eight interleaved 32-bit banks<sup><a href="#ref1">[1]</a></sup></td></tr>
         </tbody>
       </table>
+
+      <h3>Why the caches are split</h3>
       <p>
-        Pentium separates the L1 instruction and data caches to increase bandwidth: the front end can fetch instructions while the execution pipelines access data. The data cache supports two address lookups through a dual-ported TLB/tag path, while the data array is divided into <strong>eight interleaved, single-ported banks</strong>. Two accesses to different banks can proceed in the same cycle; if U and V need the same bank, U proceeds and V stalls for one clock.<sup><a href="#ref1">[1]</a></sup>
+        The i486 used a single unified cache, and the Pentium authors are explicit that a unified cache is the better design on its own terms: at equal capacity it achieves a higher hit rate because it balances code and data lines automatically, only one cache has to be designed, and self-modifying code is simpler to handle.<sup><a href="#ref1">[1]</a></sup>
       </p>
-      <p class="aside"><strong>Important:</strong> successful pairing in D1 does not guarantee stall-free execution later in the pipeline.</p>
+      <p>
+        Pentium splits the cache anyway, because superscalar issue and branch prediction demand more bandwidth than one port can supply. A predicted-taken branch must fetch its target while earlier instructions are still accessing data; two paired memory instructions may need a load and a store in the same cycle; and with the rest of the Pentium design in place, keeping split caches consistent for self-modifying code turned out to be only marginally more complex. The split therefore buys <em>ports</em>, not capacity — Intel traded hit rate for bandwidth deliberately.<sup><a href="#ref1">[1]</a></sup>
+      </p>
+      <p>
+        A small data cache is defensible for x86 because x86 code generates far more data references than RISC code: measurements on the Integer SPEC benchmarks show 0.5–0.6 data references per instruction on the i486 against 0.17–0.33 on a MIPS processor, a direct consequence of having only eight general-purpose registers and passing procedure parameters in memory. Those extra references fit in a RISC register file, so their locality is tight enough for 8 KB to capture them.<sup><a href="#ref1">[1]</a></sup>
+      </p>
+
+      <h3>Dual-access data cache</h3>
+      <p>
+        The data cache must answer two addresses per cycle, one from each pipeline, and it does so asymmetrically. The <strong>address path is fully dual-ported</strong>: the TLB and the cache tags accept both the U-pipe and V-pipe addresses in the same cycle. The <strong>data path is single-ported</strong> and divided into <strong>eight interleaved 32-bit banks</strong>. Two accesses that fall in different banks complete in the same clock; if both fall in the same bank, the U pipe takes priority and the V pipe stalls for one clock. For double-precision floating-point operands, two consecutive banks are accessed in parallel to form a single 64-bit path.<sup><a href="#ref1">[1]</a></sup>
+      </p>
+      <p>
+        The bank-conflict logic does double duty. Two references to the same address necessarily map to the same bank, so they are serialized automatically — which is how the resource and data dependencies between memory references, deliberately <em>not</em> resolved by the D1 issue logic, are resolved at all.<sup><a href="#ref1">[1]</a></sup>
+      </p>
+      <p class="aside"><strong>Important:</strong> successful pairing in D1 does not guarantee stall-free execution later in the pipeline. Pairing is decided in D1 from opcode and register operands alone; effective addresses are not produced until D2, so whether the pair actually completes without a stall is settled two stages later, in E, by the bank-conflict logic.</p>
+      <p>
+        The design team evaluated a fully dual-ported data array and rejected it. Dual porting eliminates bank conflicts, but the SRAM cell is larger, so the same silicon area yields a smaller cache and a lower hit ratio, and dependency handling becomes more complex. Interleaving was chosen as the better trade of an occasional one-cycle conflict against capacity.<sup><a href="#ref1">[1]</a></sup>
+      </p>
+
+      <h3>Address translation and write buffers</h3>
+      <p>
+        Virtual addresses are translated before a cache lookup can complete, so a translation lookaside buffer (TLB) sits on the address path shown above. Pentium provides separate TLBs for the instruction and data caches, with additional entries covering the 4 MB page size introduced by P5; the vendor documentation gives the entry counts and associativities.<sup><a href="#ref2">[2]</a></sup> Pentium also contains write buffers, which decouple the pipelines from the external bus and which the memory-ordering rules below explicitly refer to.<sup><a href="#ref3">[3]</a></sup>
+      </p>
+
+      <h3>Cache hierarchy beyond L1</h3>
+      <p>
+        P5 integrates only the two L1 caches. There is no on-die L2; in Pentium systems of this generation, second-level cache is external, implemented on the motherboard and managed by the chipset, and is reached over the processor's 64-bit external data bus. A 32-byte line is therefore filled by a burst of four 64-bit transfers.<sup><a href="#ref2">[2]</a></sup>
+      </p>
+
+      <h3>Cache coherence: write-back and MESI</h3>
+      <p>
+        Cache coherence and the memory consistency model are different things: coherence governs what values a single location may return across caches, while the consistency model governs the ordering software may observe across different locations. Pentium's coherence mechanism is a <strong>write-back protocol with four states — modified, exclusive, shared, and invalid (MESI)</strong>, a change from the i486's write-through policy.<sup><a href="#ref1">[1]</a></sup>
+      </p>
+      <p>
+        The motivation is bus bandwidth. With a write-through protocol and a 32-bit data bus, the i486DX2 occupies the bus 80% of the time, and 85% of all bus cycles are writes. Given Pentium's faster core pipelines and 64-bit data bus, moving to write-back was, in the authors' words, an obvious enhancement.<sup><a href="#ref1">[1]</a></sup>
+      </p>
+      <p>
+        The same mechanisms that maintain consistency with external memory also maintain consistency between the code cache and the data cache. This matters for x86 compatibility: self-modifying code must observe the updated instruction, so dedicated logic checks the pipeline for a store to an instruction that has already been fetched — including instructions reached through a branch predicted by the BTB — and flushes incorrectly fetched instructions when necessary.<sup><a href="#ref1">[1]</a></sup>
+      </p>
 
       <h3>Memory consistency model (MCM)</h3>
       <p>
-        The memory consistency model defines the ordering of memory operations that software may observe; it is different from cache organization. Intel describes the Pentium and Intel486 as following a <strong>processor-ordered</strong> memory model, while behaving as strongly ordered processors in most circumstances. Reads and writes normally appear at the system bus in program order, with a documented exception: a read miss may pass buffered writes when those writes are cache hits and are not to the address of the read miss. I/O reads and writes remain in program order.<sup><a href="#ref3">[3]</a></sup>
+        The memory consistency model defines the ordering of memory operations that software may observe. Intel describes the Pentium and Intel486 as following a <strong>processor-ordered</strong> memory model, while behaving as strongly ordered processors in most circumstances. Reads and writes normally appear at the system bus in program order, with a documented exception: a read miss may pass buffered writes when those writes are cache hits and are not to the address of the read miss. I/O reads and writes remain in program order.<sup><a href="#ref3">[3]</a></sup>
+      </p>
+      <p>
+        That exception is a direct consequence of the write buffers: allowing a read miss to bypass buffered writes hides write latency, at the cost of a model slightly weaker than sequential consistency. Software that requires stronger ordering uses locked operations (the <code>LOCK</code> prefix) or serializing instructions.<sup><a href="#ref3">[3]</a></sup>
       </p>
     </section>
+
 
     <section id="performance">
       <h2>6. Performance Characterization</h2>
@@ -163,6 +210,9 @@
       <ol class="questions">
         <li>Why did Pentium use asymmetric U and V pipelines instead of two identical integer pipelines?</li>
         <li>How much benefit can dual issue provide when the processor can only pair adjacent instructions?</li>
+         <li>Pentium rejected a fully dual-ported data array in favour of eight interleaved single-ported banks, accepting occasional one-cycle stalls to keep the cache large. 
+          Under what workload would that trade have been the wrong call?</li>
+
       </ol>
     </section>
 
