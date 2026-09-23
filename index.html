@@ -3,128 +3,196 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Pentium P5 processor dossier for UVA Computer Architecture, Fall 2026." />
   <title>Pentium P5 Processor Dossier</title>
+  <meta name="description" content="Technical dossier on the Intel Pentium P5 for UVA Computer Architecture, Fall 2026." />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <main class="page">
-    <header class="hero">
-      <div class="eyebrow">UVA · Computer Architecture · Fall 2026</div>
+  <main class="page" id="top">
+    <header class="masthead">
+      <p class="course">University of Virginia · Computer Architecture · Fall 2026</p>
       <h1>Pentium P5 Processor Dossier</h1>
-      <p class="subtitle">An in-order, dual-issue superscalar x86 processor.</p>
-      <div class="meta">
-        <span>Mingjia Shi</span><span>·</span><span>Jianyu Luo</span><span>·</span><span>Elton Jhang</span>
-      </div>
-      <div class="actions">
-        <a class="button primary" href="https://docs.google.com/presentation/d/1sd3mDQ8mJANdYALEEIK37SmGDtRX8t4HdRJwNrSk3EA/edit?usp=sharing" target="_blank" rel="noopener">Open Google Slides ↗</a>
-        <a class="button" href="assets/UVA-2026Fall-CompArch-Pre-In-order.pdf" target="_blank">Download presentation PDF</a>
+      <p class="subtitle">A technical overview of the Intel Pentium P5 microarchitecture, x86 ISA, pipeline, memory system, and performance.</p>
+      <p class="authors">Mingjia Shi · Jianyu Luo · Elton Jhang</p>
+      <div class="links" aria-label="Course resources">
+        <a href="https://docs.google.com/presentation/d/1sd3mDQ8mJANdYALEEIK37SmGDtRX8t4HdRJwNrSk3EA/edit?usp=sharing" target="_blank" rel="noopener">Google Slides ↗</a>
+        <span>·</span>
+        <a href="assets/presentation.pdf">Presentation PDF</a>
+        <span>·</span>
+        <a href="#references">References</a>
       </div>
     </header>
 
-    <aside class="callout">
-      <strong>Scope.</strong> This dossier follows the assignment requirements: microarchitecture, register organization and branch prediction; notable ISA features; memory system and memory consistency; and performance characterization.
-    </aside>
-
-    <nav class="toc" aria-label="Table of contents">
-      <div class="toc-title">Contents</div>
-      <a href="#microarchitecture">1. Microarchitecture</a>
-      <a href="#isa">2. ISA features</a>
-      <a href="#memory">3. Memory system &amp; MCM</a>
-      <a href="#performance">4. Performance</a>
-      <a href="#presentation">5. Presentation</a>
-      <a href="#references">6. References</a>
+    <nav class="toc" aria-label="Contents">
+      <p class="toc-title">Contents</p>
+      <ol>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#microarchitecture">Microarchitecture</a></li>
+        <li><a href="#isa">ISA features</a></li>
+        <li><a href="#pipeline">Pipeline & precise exceptions</a></li>
+        <li><a href="#memory">Memory system & MCM</a></li>
+        <li><a href="#performance">Performance characterization</a></li>
+        <li><a href="#discussion">Discussion questions</a></li>
+        <li><a href="#references">References</a></li>
+      </ol>
     </nav>
 
-    <section id="microarchitecture">
-      <h2>1. Microarchitecture</h2>
-      <p>The Pentium P5 keeps the x86 programming model while changing the internal implementation substantially. It is a two-way, in-order superscalar design: when two adjacent instructions satisfy the pairing rules, they can be issued together to the U and V integer pipelines.</p>
+    <section id="overview">
+      <h2>1. Overview</h2>
+      <p>
+        The Intel Pentium P5, introduced in 1993, is a 32-bit x86 superscalar processor. It preserves x86 binary compatibility while adding two integer execution pipelines, dynamic branch prediction, split instruction and data caches, and a pipelined floating-point unit. The integer core uses <strong>in-order, dual-issue</strong> execution: up to two adjacent instructions may be issued in one cycle when the pairing rules are satisfied.<sup><a href="#ref1">[1]</a></sup>
+      </p>
 
-      <h3>Key organization</h3>
-      <table>
+      <table class="facts">
         <tbody>
-          <tr><th>Integer issue</th><td>Up to 2 instructions per cycle, in program order</td></tr>
-          <tr><th>Integer pipelines</th><td>U pipe and V pipe; U supports a broader set of operations</td></tr>
-          <tr><th>Pipeline stages</th><td>PF → D1 → D2 → E → WB</td></tr>
-          <tr><th>Register organization</th><td>Shared x86 architectural register state; eight 32-bit general-purpose integer registers</td></tr>
-          <tr><th>Branch prediction</th><td>Dynamic prediction using a 256-entry, four-way set-associative Branch Target Buffer (BTB)</td></tr>
-          <tr><th>Floating point</th><td>Separate pipelined x87 floating-point unit</td></tr>
+          <tr><th>ISA</th><td>32-bit x86</td></tr>
+          <tr><th>Issue policy</th><td>In-order, dual-issue</td></tr>
+          <tr><th>Integer pipelines</th><td>U and V</td></tr>
+          <tr><th>L1 caches</th><td>8 KB instruction + 8 KB data</td></tr>
+          <tr><th>Cache line</th><td>32 bytes</td></tr>
+          <tr><th>External data bus</th><td>64 bits</td></tr>
         </tbody>
       </table>
+    </section>
 
-      <h3>Dual issue and pairing</h3>
-      <p>Pairing is decided in D1. The hardware examines two adjacent instructions, <code>I1</code> and <code>I2</code>. The basic pairing rule requires both instructions to be simple, requires <code>I1</code> not to be a jump, and rejects register hazards such as RAW and WAW. The U/V resource restrictions must also be satisfied.</p>
-      <div class="note"><strong>Simple instruction.</strong> In this context, “simple” means the instruction can be handled directly by hardwired control rather than requiring a microcode sequence.</div>
+    <section id="microarchitecture">
+      <h2>2. Microarchitecture</h2>
 
-      <h3>Precise exceptions</h3>
-      <p>Even though instructions overlap in the pipeline, the processor must preserve a precise architectural state. For the integer pipeline, exceptional conditions are resolved before write-back, because WB is the stage that updates architectural registers and flags.</p>
+      <h3>U and V integer pipelines</h3>
+      <p>
+        Pentium duplicates key address-generation and integer execution resources to form two pipelines, <strong>U</strong> and <strong>V</strong>. The pipelines are asymmetric: U can execute a broader class of instructions, while V is restricted to simpler operations. When a legal pair is found, the first instruction is issued to U and the second to V.<sup><a href="#ref1">[1]</a></sup>
+      </p>
+
+      <h3>Register file organization</h3>
+      <p>
+        The processor retains the x86 architectural integer register model, including the eight 32-bit general-purpose registers <code>EAX</code>, <code>EBX</code>, <code>ECX</code>, <code>EDX</code>, <code>ESI</code>, <code>EDI</code>, <code>EBP</code>, and <code>ESP</code>. The U and V pipelines share the same architectural register state, so register dependencies directly constrain whether two instructions can be paired.<sup><a href="#ref2">[2]</a></sup>
+      </p>
+
+      <h3>Branch prediction</h3>
+      <p>
+        Pentium uses a dynamic branch predictor with a <strong>256-entry, four-way set-associative Branch Target Buffer (BTB)</strong>. The BTB stores branch target and history information so that the front end can continue fetching along a predicted path. A correct prediction avoids the normal taken-branch delay; a misprediction redirects fetching and discards work from the wrong path.<sup><a href="#ref1">[1]</a></sup>
+      </p>
     </section>
 
     <section id="isa">
-      <h2>2. Notable x86 ISA features</h2>
-      <p>The P5 does not introduce a new ISA; its design challenge is to extract more instruction-level parallelism while remaining compatible with existing x86 software.</p>
+      <h2>3. ISA Features</h2>
+      <p>
+        Pentium does not introduce a new ISA; it implements the existing x86 ISA. Several x86 characteristics are especially important because they make wide fetch, decode, and superscalar issue more difficult.
+      </p>
       <ul>
-        <li><strong>Variable-length instructions.</strong> The front end must identify instruction boundaries before two adjacent instructions can be decoded and considered for pairing.</li>
-        <li><strong>Complex instructions and microcode.</strong> Common operations can use hardwired control, while more complex x86 instructions may require a microcode sequence.</li>
-        <li><strong>Rich addressing modes.</strong> Memory operands may require effective-address generation in addition to the arithmetic or logical operation itself.</li>
-        <li><strong>Backward compatibility.</strong> Existing x86 binaries remain valid even though the internal microarchitecture adds dual pipelines, prediction, and a redesigned memory system.</li>
+        <li><strong>Variable-length instructions.</strong> The front end must identify instruction boundaries before it can decode two instructions together.</li>
+        <li><strong>Complex addressing modes.</strong> Memory operands require address generation in addition to the arithmetic or logical operation.</li>
+        <li><strong>Hardwired and microcoded instructions.</strong> A “simple” instruction can be handled directly by normal hardwired pipeline control; more complex instructions require a microcode sequence.<sup><a href="#ref1">[1]</a></sup></li>
+        <li><strong>Backward compatibility.</strong> The internal microarchitecture changes substantially while the software-visible x86 behavior remains compatible with existing binaries.</li>
       </ul>
-      <p class="muted">The distinction is important: ISA compatibility constrains externally visible behavior, not the internal hardware organization.</p>
+      <p class="aside">
+        The architecture paper reports that more than <strong>90%</strong> of dynamically executed instructions in the Integer SPEC workloads were in the “simple” class.<sup><a href="#ref1">[1]</a></sup>
+      </p>
+    </section>
+
+    <section id="pipeline">
+      <h2>4. Pipeline & Precise Exceptions</h2>
+
+      <div class="pipeline" aria-label="Pentium integer pipeline">
+        <span>PF</span><b>→</b><span>D1</span><b>→</b><span>D2</span><b>→</b><span>E</span><b>→</b><span>WB</span>
+      </div>
+      <dl class="stages">
+        <div><dt>PF</dt><dd>Prefetch and align instruction bytes.</dd></div>
+        <div><dt>D1</dt><dd>Decode instructions and perform the basic pairing decision.</dd></div>
+        <div><dt>D2</dt><dd>Continue decode and generate effective addresses.</dd></div>
+        <div><dt>E</dt><dd>Execute ALU work or access the data cache.</dd></div>
+        <div><dt>WB</dt><dd>Update architectural registers and flags.</dd></div>
+      </dl>
+
+      <h3>Instruction pairing</h3>
+      <p>Pentium considers two consecutive instructions, <em>I1</em> and <em>I2</em>. A normal pair requires:</p>
+      <ul>
+        <li>both instructions are simple,</li>
+        <li><em>I1</em> is not a jump,</li>
+        <li>no RAW (read-after-write) dependency from <em>I1</em> to <em>I2</em>,</li>
+        <li>no WAW (write-after-write) dependency, and</li>
+        <li>the required execution resources are compatible with the U/V organization.</li>
+      </ul>
+      <p>
+        If the checks fail, <em>I1</em> issues alone; the in-order issue logic does not skip <em>I2</em> to search farther ahead for a better pair. Compiler scheduling can therefore improve performance by placing independent instructions next to each other before execution.<sup><a href="#ref1">[1]</a></sup>
+      </p>
+
+      <h3>Precise exceptions</h3>
+      <p>
+        A precise exception leaves the architectural state corresponding to a well-defined point in program order: instructions before the faulting instruction appear completed, while later instructions have not changed visible state. In the Pentium integer pipeline, exceptional conditions must be resolved before an instruction is allowed to update registers and flags in the WB stage.<sup><a href="#ref1">[1]</a></sup>
+      </p>
     </section>
 
     <section id="memory">
-      <h2>3. Memory system &amp; memory consistency model</h2>
+      <h2>5. Memory System & Memory Consistency Model</h2>
 
       <h3>Cache organization</h3>
       <table>
-        <thead><tr><th>Property</th><th>Instruction cache</th><th>Data cache</th></tr></thead>
+        <thead>
+          <tr><th>Property</th><th>Instruction cache</th><th>Data cache</th></tr>
+        </thead>
         <tbody>
-          <tr><th>Capacity</th><td>8 KB</td><td>8 KB</td></tr>
-          <tr><th>Associativity</th><td>2-way set associative</td><td>2-way set associative</td></tr>
-          <tr><th>Line size</th><td>32 bytes</td><td>32 bytes</td></tr>
+          <tr><td>Capacity</td><td>8 KB</td><td>8 KB</td></tr>
+          <tr><td>Associativity</td><td>2-way</td><td>2-way</td></tr>
+          <tr><td>Line size</td><td>32 bytes</td><td>32 bytes</td></tr>
         </tbody>
       </table>
-      <p>The split I-cache/D-cache organization increases bandwidth: the front end can fetch instructions while the execution stage performs data accesses. The data cache is organized as eight interleaved banks. Two accesses to different banks can proceed together; if both accesses require the same bank, the U-pipe access has priority and the V pipe stalls for one clock.</p>
-      <div class="note"><strong>Important distinction.</strong> Successful pairing in D1 does not guarantee stall-free execution. Pairing checks instruction and register constraints; cache-bank conflicts are detected later.</div>
+      <p>
+        Pentium separates the L1 instruction and data caches to increase bandwidth: the front end can fetch instructions while the execution pipelines access data. The data cache supports two address lookups through a dual-ported TLB/tag path, while the data array is divided into <strong>eight interleaved, single-ported banks</strong>. Two accesses to different banks can proceed in the same cycle; if U and V need the same bank, U proceeds and V stalls for one clock.<sup><a href="#ref1">[1]</a></sup>
+      </p>
+      <p class="aside"><strong>Important:</strong> successful pairing in D1 does not guarantee stall-free execution later in the pipeline.</p>
 
       <h3>Memory consistency model (MCM)</h3>
-      <p>The memory consistency model defines the order in which loads and stores become visible to software; it is different from cache organization. The Pentium and Intel486 follow Intel's <em>processor-ordered</em> model and behave as strongly ordered processors in most cases. Reads and writes normally appear on the system bus in program order, with a limited exception: a read miss may pass buffered writes when those writes are cache hits and do not target the same address. I/O reads and writes remain in program order.</p>
-      <p class="muted">Cache coherence answers whether processors agree on a memory location's value. Memory consistency answers which orderings of memory operations software is allowed to observe.</p>
+      <p>
+        The memory consistency model defines the ordering of memory operations that software may observe; it is different from cache organization. Intel describes the Pentium and Intel486 as following a <strong>processor-ordered</strong> memory model, while behaving as strongly ordered processors in most circumstances. Reads and writes normally appear at the system bus in program order, with a documented exception: a read miss may pass buffered writes when those writes are cache hits and are not to the address of the read miss. I/O reads and writes remain in program order.<sup><a href="#ref3">[3]</a></sup>
+      </p>
     </section>
 
     <section id="performance">
-      <h2>4. Performance characterization</h2>
-      <p>The P5's performance improvement comes from several mechanisms working together rather than dual issue alone: instruction pairing, branch prediction, split caches, a wider external data path, and a pipelined floating-point unit.</p>
-      <ul>
-        <li><strong>Integer:</strong> the paper reports roughly 2× the performance of an i486 at the same clock rate in its comparisons.</li>
-        <li><strong>Floating point:</strong> the paper reports much larger gains for some vector workloads, with up to about 5× at equal clock in selected cases.</li>
-        <li><strong>Why less than the theoretical 2× issue rate?</strong> Not every adjacent pair is legal; branches, cache misses, and bank conflicts also create bubbles or stalls.</li>
-      </ul>
-      <p class="muted">These measurements should be read as system-level results: compiler quality and memory-system differences also contribute to the observed speedup.</p>
+      <h2>6. Performance Characterization</h2>
+      <p>
+        The architecture paper reports approximately <strong>2× integer performance</strong> over the i486 in an equal-core-clock comparison and substantially larger floating-point gains. In the SPEC92 chart discussed in our presentation, the Pentium/i486DX2-66 ratios are approximately <strong>2.0× for SPECint92</strong> and <strong>3.6× for SPECfp92</strong>; the paper separately reports gains of up to about <strong>5×</strong> on some floating-point vector code.<sup><a href="#ref1">[1]</a></sup>
+      </p>
+      <p>
+        These gains should not be attributed to dual issue alone. They also reflect branch prediction, the split caches, a wider memory interface, the pipelined FPU, compiler scheduling, and workload characteristics. In practice, the theoretical two-instruction issue width is reduced by pairing restrictions, branches, cache misses, and bank conflicts.
+      </p>
+    </section>
+
+    <section id="discussion">
+      <h2>7. Discussion Questions</h2>
+      <ol class="questions">
+        <li>Why did Pentium use asymmetric U and V pipelines instead of two identical integer pipelines?</li>
+        <li>How much benefit can dual issue provide when the processor can only pair adjacent instructions?</li>
+      </ol>
     </section>
 
     <section id="presentation">
-      <h2>5. Class presentation</h2>
-      <p>The 15-minute presentation used in class is provided separately rather than duplicated on this page.</p>
-      <div class="actions left">
-        <a class="button primary" href="https://docs.google.com/presentation/d/1sd3mDQ8mJANdYALEEIK37SmGDtRX8t4HdRJwNrSk3EA/edit?usp=sharing" target="_blank" rel="noopener">Google Slides ↗</a>
-        <a class="button" href="assets/UVA-2026Fall-CompArch-Pre-In-order.pdf" target="_blank">Presentation PDF</a>
-      </div>
+      <h2>8. Class Presentation</h2>
+      <p>The presentation delivered in class is included as part of this dossier.</p>
+      <p>
+        <a href="https://docs.google.com/presentation/d/1sd3mDQ8mJANdYALEEIK37SmGDtRX8t4HdRJwNrSk3EA/edit?usp=sharing" target="_blank" rel="noopener">Open Google Slides ↗</a><br />
+        <a href="assets/presentation.pdf">View the PDF version</a>
+      </p>
     </section>
 
     <section id="references">
-      <h2>6. References</h2>
-      <ol class="refs">
-        <li>D. Alpert and D. Avnon, “Architecture of the Pentium Microprocessor,” <em>IEEE Micro</em>, vol. 13, no. 3, pp. 11–21, June 1993. <a href="https://doi.org/10.1109/40.216745" target="_blank" rel="noopener">doi:10.1109/40.216745 ↗</a></li>
-        <li>Intel Corporation, <em>Pentium® Processor Family Developer's Manual, Volume 1: Pentium® Processors</em>, Order No. 241428, 1995. <a href="https://intel-vintage-developer.eu5.org/DESIGN/SPECENVN/INTARCH/MANUALS/PENTIUMR.HTM" target="_blank" rel="noopener">manual ↗</a></li>
-        <li>Intel Corporation, <em>Pentium® Processor Family Developer's Manual, Volume 3: Architecture and Programming Manual</em>, Order No. 241430, 1995.</li>
-        <li>Intel Corporation, <em>Intel® 64 and IA-32 Architectures Software Developer's Manual, Volume 3A</em>, section “Memory Ordering in the Intel® Pentium® and Intel486™ Processors.” <a href="https://www.intel.com/content/dam/support/us/en/documents/processors/pentium4/sb/25366821.pdf" target="_blank" rel="noopener">Intel manual ↗</a></li>
+      <h2>References</h2>
+      <ol class="references">
+        <li id="ref1">
+          D. Alpert and D. Avnon, “Architecture of the Pentium Microprocessor,” <em>IEEE Micro</em>, vol. 13, no. 3, pp. 11–21, June 1993. <a href="https://doi.org/10.1109/40.216745" target="_blank" rel="noopener">doi:10.1109/40.216745 ↗</a>
+        </li>
+        <li id="ref2">
+          Intel Corporation, <em>Pentium Processor Family Developer’s Manual, Volume 1: Pentium Processors</em>, Order No. 241428-004, 1995. <a href="https://bitsavers.org/components/intel/pentium/241428-004_Pentium_Processor_Family_Developers_Manual_Volume_1_Jul95.pdf" target="_blank" rel="noopener">PDF ↗</a>
+        </li>
+        <li id="ref3">
+          Intel Corporation, <em>Pentium Processor Family Developer’s Manual, Volume 3: Architecture and Programming Manual</em>, Order No. 241430-004, 1995; see also Intel’s IA-32 documentation on Pentium/Intel486 memory ordering.
+        </li>
       </ol>
     </section>
 
     <footer>
-      <span>Pentium P5 Processor Dossier</span>
-      <span>University of Virginia · Fall 2026</span>
+      <p>University of Virginia · Computer Architecture · Fall 2026</p>
+      <p><a href="#top">Back to top ↑</a></p>
     </footer>
   </main>
 </body>

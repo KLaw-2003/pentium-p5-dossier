@@ -1,12 +1,22 @@
 # Pentium P5 Processor Dossier
 
-A simple, Notion-style single-page dossier for UVA Computer Architecture (Fall 2026).
+Minimal single-page course dossier for UVA Computer Architecture, Fall 2026.
 
-## GitHub Pages
+## Files to upload to GitHub
 
-Publish from the `main` branch and `/(root)` folder.
+Upload these items to the **root** of the `pentium-p5-dossier` repository:
 
-The site uses only:
 - `index.html`
 - `styles.css`
-- `assets/UVA-2026Fall-CompArch-Pre-In-order.pdf`
+- `.nojekyll`
+- `README.md`
+- `assets/`
+  - `presentation.pdf`
+
+GitHub Pages should be configured as:
+
+- Source: **Deploy from a branch**
+- Branch: **main**
+- Folder: **/(root)**
+
+The site contains no external JavaScript, frameworks, build tools, or image assets.
